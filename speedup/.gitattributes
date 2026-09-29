@@ -1,0 +1,25 @@
+# 统一换行符，避免 Windows / Linux 之间来回抖动把 diff 搞花
+* text=auto eol=lf
+
+# ------------------------------------------------------------------ 归档区
+# archive/ 里的脚本是**历史留档**，必须逐字节保留原样，
+# 不许 Git 做任何换行转换 —— 否则 sha256 会和 _PROVENANCE.md 里记的对不上。
+archive/** -text
+
+# ------------------------------------------------------------------ 二进制
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.xlsx binary
+*.xlsm binary
+*.pdf binary
+*.exe binary
+*.dll binary
+*.ttf binary
+*.ttc binary
+
+# ------------------------------------------------------------------ 锁文件
+# uv.lock 是自动生成的，diff 噪音大；具体 diff 用 `git diff -- uv.lock` 强制看
+uv.lock text eol=lf

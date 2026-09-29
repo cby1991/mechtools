@@ -1,0 +1,63 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# ---- 虚拟环境 / uv ----
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+# uv.lock 必须入库（应用型项目），不要忽略
+
+# ---- 测试与覆盖率 ----
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# ---- 类型检查 / 检查器缓存 ----
+.mypy_cache/
+.ruff_cache/
+.pytype/
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+*.swp
+*~
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ---- 项目本地临时产物 ----
+*.log
+out/
+tmp/
+_sandbox/
+!docs/**
+
+# ---- 本地备份（不进仓库，也不进公开仓库）----
+_backup/
+
+# ---- 归档区：只留本地，不进公开仓库 ----
+# 里面是 65 个历史脚本原件（含内部路径、项目名、汇报文案），
+# 放出去不合适。`speedup archive` 仍然能读本机这个目录。
+archive/
+
+# 归档台账跟着归档区一起留在本地（它逐条列了那些脚本的原始路径）
+docs/INVENTORY.md
+
+# ---- 快捷方式（内容里是机器绝对路径，换台机器就没用了）----
+# 用 `uv run speedup shortcut` 随时重建
+*.lnk
+
+# ---- 业务线 Excel 产物（可能含公司数据，不入库）----
+**/补料清单汇总*.xlsx
