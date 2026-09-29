@@ -13,9 +13,10 @@ import openpyxl
 import pytest
 
 from speedup import cli
-from speedup.config import COL_MATERIAL, COL_NAME, DATA_START_ROW
+from speedup.config import COL_MATERIAL, COL_NAME, COL_NOTE, DATA_START_ROW
 from speedup.excel.reader import extract_names
 from speedup.material import MaterialLookup
+from speedup.techreq import CraftLookup
 
 
 @pytest.fixture
@@ -33,6 +34,29 @@ def fake_materials(monkeypatch):
             return MaterialLookup(material=mapping[stem], where="标题栏"), f"{stem}.pdf"
 
         monkeypatch.setattr("speedup.tools.gbbuild.lookup_material_for", fake_lookup)
+
+    return _apply
+
+
+@pytest.fixture
+def fake_crafts(monkeypatch):
+    """让「读图纸技术要求栏」固定返回指定工艺。
+
+    用法：``fake_crafts({"关节支撑板": "阳极氧化本色"})``。
+    值为 ``None`` 表示**图纸里没写工艺**（和「读不了」不是一回事）。
+    """
+
+    def _apply(mapping: dict[str, str | None]):
+        def fake_craft(pdf_path, **_kwargs):
+            stem = os.path.splitext(os.path.basename(str(pdf_path)))[0]
+            if stem not in mapping:
+                return CraftLookup(where="技术要求：")
+            text = mapping[stem]
+            if text is None:
+                return CraftLookup(where="技术要求：")
+            return CraftLookup(text=text, raw=f"5、{text}；", where="技术要求：")
+
+        monkeypatch.setattr("speedup.tools.gbbuild.find_craft_in_pdf", fake_craft)
 
     return _apply
 
@@ -69,8 +93,8 @@ class TestGbbuildEndToEnd:
     def test_custom_output_filename(self, tmp_path, make_files):
         folder = tmp_path / "0916"
         make_files(folder, ["垫片.STEP"])
-        assert cli.main(["gbbuild", str(folder), "--out", "补料清单.xlsx", "--no-open"]) == 0
-        assert (folder / "补料清单.xlsx").exists()
+        assert cli.main(["gbbuild", str(folder), "--out", "采购清单.xlsx", "--no-open"]) == 0
+        assert (folder / "采购清单.xlsx").exists()
 
     def test_scans_subdirectories(self, tmp_path, make_files):
         folder = tmp_path / "0916"
@@ -101,16 +125,112 @@ class TestGbbuildEndToEnd:
         cli.main(["gbbuild", str(folder), "--no-open"])
         assert "覆盖旧文件" in capsys.readouterr().out
 
+    def test_craft_lands_in_the_note_column(
+        self, tmp_path, make_files, fake_materials, fake_crafts
+    ):
+        """图纸技术要求栏里的表面处理要求，要落到备注列。"""
+        folder = tmp_path / "0916"
+        make_files(folder, ["关节支撑板.STEP"])
+        fake_materials({"关节支撑板": "7075-T6"})
+        fake_crafts({"关节支撑板": "阳极氧化本色"})
+
+        cli.main(["gbbuild", str(folder), "--no-open"])
+
+        worksheet = openpyxl.load_workbook(folder / "0916.xlsx").active
+        assert (
+            worksheet.cell(row=DATA_START_ROW, column=COL_NOTE).value
+            == "阳极氧化本色"
+        )
+
+    def test_part_without_craft_line_is_reported(
+        self, tmp_path, make_files, fake_materials, fake_crafts, capsys
+    ):
+        """有图纸、但技术要求栏里没写工艺 —— 要在汇总里点名。
+
+        不点名的话，备注列那个空格没人会当回事，等加工厂问起来才发现漏了。
+        """
+        folder = tmp_path / "0916"
+        make_files(folder, ["垫片.STEP"])
+        fake_materials({"垫片": "Q235"})
+        fake_crafts({"垫片": None})
+
+        cli.main(["gbbuild", str(folder), "--no-open"])
+
+        out = capsys.readouterr().out
+        assert "表面处理" in out
+        assert "垫片" in out
+
+    def test_read_error_is_not_reported_as_missing(
+        self, tmp_path, make_files, fake_materials, capsys, monkeypatch
+    ):
+        """「读不了」和「图纸没写」必须分开报（R26 的最后一条）。"""
+        folder = tmp_path / "0916"
+        make_files(folder, ["垫片.STEP"])
+        fake_materials({"垫片": "Q235"})
+        monkeypatch.setattr(
+            "speedup.tools.gbbuild.find_craft_in_pdf",
+            lambda _path, **_kw: CraftLookup(error="读取失败(假的)"),
+        )
+
+        cli.main(["gbbuild", str(folder), "--no-open"])
+
+        out = capsys.readouterr().out
+        assert "没有写表面处理" not in out
+        assert "读取失败" in out
+
+    def test_part_without_pdf_has_empty_note(
+        self, tmp_path, make_files, fake_materials, fake_crafts
+    ):
+        """没有同名图纸时不该去读工艺，备注列也该是空的。"""
+        folder = tmp_path / "0916"
+        make_files(folder, ["垫片.STEP"])
+        fake_materials({})
+        fake_crafts({})
+
+        cli.main(["gbbuild", str(folder), "--no-open"])
+
+        worksheet = openpyxl.load_workbook(folder / "0916.xlsx").active
+        assert worksheet.cell(row=DATA_START_ROW, column=COL_NOTE).value is None
+
+    def test_missing_pdf_lists_the_folder_pdfs(
+        self, tmp_path, make_files, fake_materials, capsys
+    ):
+        """没匹配到图纸时，把文件夹里实际有哪些 PDF 打出来。
+
+        这一条是给「明明有图纸，为什么说没有」准备的 —— 一眼就能分清
+        「图纸真不在这个文件夹」和「图纸在，只是文件名对不上」。
+        """
+        folder = tmp_path / "0916"
+        make_files(folder, ["垫片.STEP", "别的东西.pdf"])
+        fake_materials({})
+
+        cli.main(["gbbuild", str(folder), "--no-open"])
+
+        out = capsys.readouterr().out
+        assert "别的东西.pdf" in out
+
+    def test_missing_pdf_when_folder_has_none(
+        self, tmp_path, make_files, fake_materials, capsys
+    ):
+        folder = tmp_path / "0916"
+        make_files(folder, ["垫片.STEP"])
+        fake_materials({})
+
+        cli.main(["gbbuild", str(folder), "--no-open"])
+
+        out = capsys.readouterr().out
+        assert "一张 PDF 都没有" in out
+
 
 class TestGbcopyEndToEnd:
     def _make_list(self, folder, names):
-        """造一份真实的补料清单（用 gbbuild 的格式），而不是手搓一个假的。"""
+        """造一份真实的采购清单（用 gbbuild 的格式），而不是手搓一个假的。"""
         from speedup.excel.writer import generate_supplement_list
         from speedup.models import SupplementEntry
 
         folder.mkdir(parents=True, exist_ok=True)
         destination, _existed = generate_supplement_list(
-            folder, [SupplementEntry(name=name) for name in names], filename="补料清单.xlsx"
+            folder, [SupplementEntry(name=name) for name in names], filename="采购清单.xlsx"
         )
         return destination
 
@@ -201,7 +321,7 @@ class TestGbcopyEndToEnd:
 class TestMultiSheetListing:
     """回归测试：工作簿里有好几张带「名称」列的表时，只能认一张。
 
-    背景（`AGENTS.md` P12）：用户那份 `0825示例批次.xlsx` 有「补料清单」和
+    背景（`AGENTS.md` P12）：用户那份 `0825示例批次.xlsx` 有「采购清单」和
     「备料参考」两张表。旧实现把两张表的名**合并**成 47 个，
     于是参考页的 26 个零件也被拷了出去 —— 用户是在目标文件夹里看到
     「怎么多了一堆图纸」才发现不对的。
@@ -229,7 +349,7 @@ class TestMultiSheetListing:
         listing = self._make_multi_sheet_list(
             target,
             {
-                "补料清单": ["座板"],
+                "采购清单": ["座板"],
                 "备料参考": ["NECK", "HEAD_BACK", "隔离环"],
             },
         )
@@ -272,7 +392,7 @@ class TestMultiSheetListing:
 
     def test_sheet_flag_silences_the_warning(self, scene, capsys):
         target, listing, source = scene
-        cli.main(["gbcopy", str(listing), str(source), "--sheet", "补料清单", "--no-open"])
+        cli.main(["gbcopy", str(listing), str(source), "--sheet", "采购清单", "--no-open"])
         assert "[警告]" not in capsys.readouterr().out, "用户已经明确指定了，不用再唠叨"
 
     def test_unknown_sheet_name_returns_2(self, scene, capsys):
@@ -282,7 +402,7 @@ class TestMultiSheetListing:
         )
         out = capsys.readouterr().out
         assert "[失败]" in out
-        assert "补料清单" in out  # 报错要告诉人有哪些表可选
+        assert "采购清单" in out  # 报错要告诉人有哪些表可选
 
 
 class TestFullWorkflow:

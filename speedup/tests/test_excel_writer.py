@@ -1,4 +1,4 @@
-"""补料清单生成测试：表头格式、数据落位、命名、覆盖标记。"""
+"""采购清单生成测试：表头格式、数据落位、命名、覆盖标记。"""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import openpyxl
 import pytest
 
 from speedup.config import (
+    CENTERED_COLUMNS,
     COL_MATERIAL,
     COL_NAME,
     COL_NO,
@@ -56,6 +57,34 @@ class TestBuildWorkbook:
         _workbook, worksheet = build_supplement_workbook(0)
         for index, width in enumerate(SUPPLEMENT_WIDTHS, 1):
             assert worksheet.column_dimensions[get_column_letter(index)].width == width
+
+    @pytest.mark.parametrize("column", CENTERED_COLUMNS)
+    def test_short_number_columns_are_centered(self, column):
+        """序号、数量是短数字，居中才像一张表 —— 左对齐会贴着格线看着散。"""
+        _workbook, worksheet = build_supplement_workbook(0)
+        for row in range(DATA_START_ROW, MIN_DATA_ROWS + 1):
+            assert worksheet.cell(row=row, column=column).alignment.horizontal == "center"
+
+    def test_text_columns_stay_left_aligned(self):
+        """名称、材料、备注是长短不一的文字，居中反而难扫读。"""
+        _workbook, worksheet = build_supplement_workbook(0)
+        text_columns = [
+            index
+            for index in range(1, len(SUPPLEMENT_HEADERS) + 1)
+            if index not in CENTERED_COLUMNS
+        ]
+        assert text_columns, "至少要有一列是左对齐的，否则这条测试就没意义了"
+        for column in text_columns:
+            for row in range(DATA_START_ROW, MIN_DATA_ROWS + 1):
+                alignment = worksheet.cell(row=row, column=column).alignment
+                assert alignment.horizontal in (None, "left")
+
+    def test_center_columns_are_vertically_centered_too(self):
+        """居中的同时也要垂直居中，别只改一半。"""
+        _workbook, worksheet = build_supplement_workbook(0)
+        for column in CENTERED_COLUMNS:
+            alignment = worksheet.cell(row=DATA_START_ROW, column=column).alignment
+            assert alignment.vertical == "center"
 
     def test_empty_table_still_gets_minimum_rows(self):
         _workbook, worksheet = build_supplement_workbook(0)

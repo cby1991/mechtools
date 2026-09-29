@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .config import HEADER_ZONE_RATIO
+from .pdfpage import words_in_page
 
 __all__ = [
     "STRONG_PATTERNS",
@@ -184,7 +185,8 @@ def find_material_in_pdf(
         with pdfplumber.open(pdf_path) as pdf:
             page = pdf.pages[0]
             page_height = float(page.height)
-            words = page.extract_words()
+            # 只取页面内的词 —— 页面外可能是被裁掉的另一张图（见 pdfpage）
+            words = words_in_page(page)
     except Exception as exc:  # 加密 / 损坏 / 权限
         return MaterialLookup(error=f"读取失败({exc})")
 

@@ -3,9 +3,9 @@
 **[中文说明 / Chinese](README.zh-CN.md)**
 
 Small tools that automate the paperwork around outsourced part machining: scan a
-folder of STEP models, read the material off the matching PDF drawings, produce a
-material-request spreadsheet — then find those models and drawings again and
-collect them next to the spreadsheet.
+folder of STEP models, read the material and the surface-treatment requirement off
+the matching PDF drawings, produce a material-request spreadsheet — then find those
+models and drawings again and collect them next to the spreadsheet.
 
 Pure Python. No `.bat`, no PowerShell. Ships with a desktop GUI, a console menu,
 subcommands, and a test suite.
@@ -14,7 +14,7 @@ subcommands, and a test suite.
 
 | Tool | Subcommand | What it does |
 | --- | --- | --- |
-| Generate material list | `gbbuild` | Scans a folder for `.stp` / `.step`, finds the **same-named PDF drawing** for each model, reads the material from the drawing's title block, and writes an Excel list. |
+| Generate material list | `gbbuild` | Scans a folder for `.stp` / `.step`, finds the **same-named PDF drawing** for each model, reads the material from the title block and the surface-treatment requirement from the drawing's notes column (技术要求 / 设计要求), then writes an Excel list. With `--with-image` it also renders an **isometric thumbnail** into the image column (requires the optional `speedup[images]` extra). |
 | Match & copy files | `gbcopy` | Reads the part names from that Excel, finds the matching STEP + PDF in a search folder, and copies them next to the spreadsheet. **Never overwrites an existing file.** |
 
 ## Requirements
@@ -81,7 +81,7 @@ uv run speedup gbcopy "list.xlsx" "D:\example\models" --dry-run
   target folder and lists it in the report — that file may have been edited by hand.
 - **One worksheet only.** A workbook often contains extra sheets that also have a
   name column (a reference sheet, for instance). `gbcopy` reads exactly one: the
-  sheet named `补料清单` if present, otherwise the first candidate. It reports
+  sheet named `采购清单` if present, otherwise the first candidate. It reports
   which sheets it ignored; override with `--sheet <name>`.
 - **`archive/` is local-only.** The repository deliberately does not track it —
   it holds historical one-off scripts containing internal paths and project names.

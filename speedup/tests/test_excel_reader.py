@@ -5,7 +5,12 @@ from __future__ import annotations
 import openpyxl
 import pytest
 
-from speedup.config import NAME_HEADER_KEYWORD, PREFERRED_INPUT_SHEET
+from speedup.config import (
+    LEGACY_SHEET_TITLE,
+    NAME_HEADER_KEYWORD,
+    PREFERRED_INPUT_SHEETS,
+    SHEET_TITLE,
+)
 from speedup.errors import InputError, UnsupportedFormatError
 from speedup.excel.reader import (
     column_letters_to_index,
@@ -17,7 +22,7 @@ from speedup.excel.reader import (
 )
 
 
-def _write_book(path, rows, title="补料清单", extra_sheets=None):
+def _write_book(path, rows, title="采购清单", extra_sheets=None):
     """造一个 xlsx。``extra_sheets`` 用来加「参考表」这种同表头的干扰项。"""
     workbook = openpyxl.Workbook()
     worksheet = workbook.active
@@ -51,14 +56,14 @@ class TestBothParsersAgree:
         path = _write_book(tmp_path / "a.xlsx", [["序号", "名称"], [1, "垫片"], [2, "法兰盘"]])
         expected = [["序号", "名称"], ["1", "垫片"], ["2", "法兰盘"]]
 
-        assert read_xlsx_with_openpyxl(path)["补料清单"] == expected
-        assert read_xlsx_builtin(path)["补料清单"] == expected
+        assert read_xlsx_with_openpyxl(path)["采购清单"] == expected
+        assert read_xlsx_builtin(path)["采购清单"] == expected
 
     def test_empty_cells_and_gaps(self, tmp_path):
         path = _write_book(tmp_path / "b.xlsx", [["名称", "", "材料"], ["垫片", None, "7075-T6"]])
         sheets = read_xlsx_builtin(path)
-        assert sheets["补料清单"][1][0] == "垫片"
-        assert sheets["补料清单"][1][2] == "7075-T6"
+        assert sheets["采购清单"][1][0] == "垫片"
+        assert sheets["采购清单"][1][2] == "7075-T6"
 
     def test_multiple_sheets(self, tmp_path):
         workbook = openpyxl.Workbook()
@@ -80,7 +85,7 @@ class TestBothParsersAgree:
 class TestReadWorkbook:
     def test_reads_xlsx(self, tmp_path):
         path = _write_book(tmp_path / "a.xlsx", [["名称"], ["垫片"]])
-        assert "补料清单" in read_workbook(path)
+        assert "采购清单" in read_workbook(path)
 
     def test_rejects_legacy_xls(self, tmp_path):
         legacy = tmp_path / "old.xls"
@@ -99,7 +104,7 @@ class TestReadWorkbook:
             raise ValueError("模拟 openpyxl 解析不了这个文件")
 
         monkeypatch.setattr("speedup.excel.reader.read_xlsx_with_openpyxl", boom)
-        assert read_workbook(path)["补料清单"][1][0] == "垫片"
+        assert read_workbook(path)["采购清单"][1][0] == "垫片"
 
 
 class TestExtractNamesFromSheets:
@@ -150,20 +155,44 @@ class TestExtractNamesFromSheets:
 class TestSheetSelection:
     """一份工作簿里可能有好几张都带「名称」列的表，只该认一张。
 
-    回归背景（`AGENTS.md` P12）：`0825示例批次.xlsx` 有「补料清单」和
+    回归背景（`AGENTS.md` P12）：`0825示例批次.xlsx` 有「采购清单」和
     「备料参考」两张表，旧实现把两张表的名**合并**成 47 个，
     结果多拷了 26 个文件出去。
     """
 
     TWO_SHEETS = {
-        "补料清单": [["序号", "名称"], [1, "座板"], [2, "臂杆"]],
+        "采购清单": [["序号", "名称"], [1, "座板"], [2, "臂杆"]],
         "备料参考": [["序号", "名称"], [1, "NECK"], [2, "HEAD_BACK"], [3, "隔离环"]],
     }
 
     def test_prefers_the_sheet_named_like_our_own_output(self):
         result = extract_names_from_sheets(self.TWO_SHEETS)
-        assert result.sheet == PREFERRED_INPUT_SHEET
+        assert result.sheet == PREFERRED_INPUT_SHEETS[0]
         assert list(result.names) == ["座板", "臂杆"]
+
+    def test_still_reads_the_legacy_sheet_name(self):
+        """改名兼容：2026-09-29 之前生成的清单，工作表还叫「补料清单」。
+
+        只认新名的话，用户手上的旧文件会退化成「取第一张表」——
+        多表工作簿（旧清单 + 备料参考）就会取错表。这条钉住兼容行为。
+        """
+        legacy = {
+            LEGACY_SHEET_TITLE: [["序号", "名称"], [1, "座板"]],
+            "备料参考": [["序号", "名称"], [1, "NECK"]],
+        }
+        result = extract_names_from_sheets(legacy)
+        assert result.sheet == LEGACY_SHEET_TITLE
+        assert list(result.names) == ["座板"]
+        assert "NECK" not in result.names
+
+    def test_new_name_wins_when_both_present(self):
+        """新旧名同时出现时，认新的那张（万一有人手工留了一份旧表）。"""
+        both = {
+            SHEET_TITLE: [["序号", "名称"], [1, "新的"]],
+            LEGACY_SHEET_TITLE: [["序号", "名称"], [1, "旧的"]],
+        }
+        result = extract_names_from_sheets(both)
+        assert list(result.names) == ["新的"]
 
     def test_reference_sheet_no_longer_pollutes_the_list(self):
         """这条是那个 bug 的回归测试，别删。"""
@@ -181,7 +210,7 @@ class TestSheetSelection:
         assert "--sheet" in warning
 
     def test_falls_back_to_a_worksheet_of_any_name(self):
-        """没有「补料清单」这张表时，仍然要能读 —— 不能因为改名就罢工。"""
+        """没有「采购清单」这张表时，仍然要能读 —— 不能因为改名就罢工。"""
         result = extract_names_from_sheets({"Sheet1": [["名称"], ["垫片"]]})
         assert result.sheet == "Sheet1"
         assert list(result.names) == ["垫片"]
@@ -194,9 +223,9 @@ class TestSheetSelection:
         assert result.skipped == ("乙",)
 
     def test_sheets_without_a_name_column_are_not_candidates(self):
-        sheets = {"补料清单": [["名称"], ["垫片"]], "说明": [["标题"], ["随便写点什么"]]}
+        sheets = {"采购清单": [["名称"], ["垫片"]], "说明": [["标题"], ["随便写点什么"]]}
         result = extract_names_from_sheets(sheets)
-        assert result.sheet == "补料清单"
+        assert result.sheet == "采购清单"
         assert result.skipped == ()
         assert result.ambiguous is False
         assert result.warning() is None
@@ -211,7 +240,7 @@ class TestSheetSelection:
         """用户自己指定了表，就别再提醒他「可以指定表」。"""
         result = extract_names_from_sheets(self.TWO_SHEETS, sheet="备料参考")
         assert result.requested is True
-        assert result.skipped == (PREFERRED_INPUT_SHEET,)
+        assert result.skipped == (PREFERRED_INPUT_SHEETS[0],)
         assert result.warning() is None
 
     def test_auto_pick_is_not_marked_requested(self):
@@ -222,7 +251,7 @@ class TestSheetSelection:
             extract_names_from_sheets(self.TWO_SHEETS, sheet="压根没有这张表")
 
     def test_explicit_sheet_without_a_name_column(self):
-        sheets = {"补料清单": [["名称"], ["垫片"]], "说明": [["标题"], ["1"]]}
+        sheets = {"采购清单": [["名称"], ["垫片"]], "说明": [["标题"], ["1"]]}
         result = extract_names_from_sheets(sheets, sheet="说明")
         assert result.names == ()
         assert result.sheet == "说明"
@@ -230,10 +259,10 @@ class TestSheetSelection:
     def test_explicit_sheet_error_lists_what_is_available(self):
         with pytest.raises(InputError) as excinfo:
             extract_names_from_sheets(self.TWO_SHEETS, sheet="错的")
-        assert "补料清单" in str(excinfo.value)  # 报错要告诉人有哪些表可选
+        assert "采购清单" in str(excinfo.value)  # 报错要告诉人有哪些表可选
 
     def test_single_sheet_needs_no_warning(self):
-        result = extract_names_from_sheets({"补料清单": [["名称"], ["垫片"]]})
+        result = extract_names_from_sheets({"采购清单": [["名称"], ["垫片"]]})
         assert result.ambiguous is False
         assert result.warning() is None
 
@@ -243,7 +272,7 @@ class TestExtractNames:
         path = _write_book(tmp_path / "a.xlsx", [["序号", "名称"], [1, "垫片"]])
         result = extract_names(path)
         assert list(result.names) == ["垫片"]
-        assert "补料清单" in result.summary()
+        assert "采购清单" in result.summary()
 
     def test_raises_when_no_name_column(self, tmp_path):
         path = _write_book(tmp_path / "a.xlsx", [["序号", "图号"], [1, "X-01"]])

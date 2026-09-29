@@ -1,8 +1,8 @@
-"""工具：补料文件自动匹配拷贝。
+"""工具：采购文件自动匹配拷贝。
 
 流程
 ----
-1. 选补料清单 Excel（命令行给 / 弹窗选 / 手输）
+1. 选采购清单 Excel（命令行给 / 弹窗选 / 手输）
 2. 读出「名称」列的所有零件名（**只读一张工作表**，见下）
 3. 选在哪个文件夹里搜索
 4. 扫描其中的 ``.stp/.step/.pdf``，按名称匹配
@@ -11,7 +11,7 @@
 只读一张工作表
 --------------
 工作簿里常常还有「备料参考」这类同样带「名称」列的附页。
-默认**优先读名为「补料清单」的那张**，没有就取第一张带「名称」列的表。
+默认**优先读名为「采购清单」的那张**，没有就取第一张带「名称」列的表。
 有别的候选表时会打一条醒目提醒，用 ``--sheet`` 可以手动指定。
 
 > 早期实现会把所有表的名合并，导致参考页的零件也被拷出去。见 `AGENTS.md` 的 P12。
@@ -22,7 +22,7 @@
 * 扩展名、大小写不敏感
 * ``--dry-run`` 只列结果不拷贝
 
-对应原脚本：``D:\\WorkSpace\\订单\\补料文件自动匹配拷贝.py``（v1.0）。
+对应原脚本：``D:\\WorkSpace\\订单\\采购文件自动匹配拷贝.py``（v1.0）。
 """
 
 from __future__ import annotations
@@ -59,8 +59,8 @@ from ..matching import (
 from ..osutil import open_with_default_app
 
 NAME = "gbcopy"
-TITLE = "补料文件匹配拷贝"
-SUMMARY = "按补料清单的「名称」列，在指定文件夹里找回 STP 与 PDF，拷到清单旁边"
+TITLE = "采购文件匹配拷贝"
+SUMMARY = "按采购清单的「名称」列，在指定文件夹里找回 STP 与 PDF，拷到清单旁边"
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
@@ -68,15 +68,15 @@ def add_parser(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParse
         NAME,
         help=SUMMARY,
         description=f"{TITLE}：{SUMMARY}。不带参数运行会依次弹窗选清单和搜索文件夹。",
-        epilog='示例：speedup gbcopy "补料清单.xlsx" "D:\\WorkSpace\\订单" --dry-run',
+        epilog='示例：speedup gbcopy "采购清单.xlsx" "D:\\WorkSpace\\订单" --dry-run',
     )
-    parser.add_argument("excel", nargs="?", default=None, help="补料清单 .xlsx；省略则弹窗选择")
+    parser.add_argument("excel", nargs="?", default=None, help="采购清单 .xlsx；省略则弹窗选择")
     parser.add_argument("search_dir", nargs="?", default=None, help="搜索文件夹；省略则弹窗选择")
     parser.add_argument(
         "--sheet",
         default=None,
         help=(
-            "从哪张工作表读「名称」列。省略则自动：优先用名为「补料清单」的表，"
+            "从哪张工作表读「名称」列。省略则自动：优先用名为「采购清单」的表，"
             "否则用第一张带「名称」列的表"
         ),
     )
@@ -96,7 +96,7 @@ def _choose_excel() -> str:
     chosen = ask_path(
         "file",
         "请输入清单文件路径：",
-        partial(pick_file, "选择补料清单 Excel", FILTER_EXCEL),
+        partial(pick_file, "选择采购清单 Excel", FILTER_EXCEL),
         validate_file,
     )
     if not chosen:
@@ -225,7 +225,7 @@ def run(args: argparse.Namespace) -> int:
     console.ensure_safe_output()
     console.heading(TITLE)
 
-    print("\n【步骤 1 / 4】确定补料清单")
+    print("\n【步骤 1 / 4】确定采购清单")
     excel = args.excel or _choose_excel()
     excel = os.path.abspath(excel)
     if not os.path.isfile(excel):

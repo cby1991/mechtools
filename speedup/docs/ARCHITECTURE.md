@@ -37,7 +37,7 @@
                       │ build_parser() → TOOLS[name].run(args)
          ┌────────────▼─────────────────┐
          │  tools/   一个工具一个模块      │
-         │  ├─ gbbuild.py  生成补料清单   │
+         │  ├─ gbbuild.py  生成采购清单   │
          │  └─ gbcopy.py   匹配拷贝      │
          └──────────────┬───────────────┘
                         │ 只编排，不实现细节
@@ -97,7 +97,7 @@
 ### 2.2 常量集中：`config.py` 是唯一真相
 
 旧脚本的 `MODEL_EXTS`、`NAME_COL`、`HEADER_ROW` 散在各文件头部。
-补料清单的列号在**生成侧**（writer）和**读取侧**（reader）各写一份 —— 改列就出事。
+采购清单的列号在**生成侧**（writer）和**读取侧**（reader）各写一份 —— 改列就出事。
 
 现在全部在 `config.py`，业务模块里不允许出现裸数字：
 
@@ -145,7 +145,7 @@ SpeedupError（基类）
 
 2. gbcopy.run(args)
    ├─ excel.reader.extract_names(清单)      # 读「名称」列（只认一张工作表，见 AGENTS.md R24）
-   │    └─ 选表：--sheet 指定 > 名为「补料清单」的表 > 第一张候选
+   │    └─ 选表：--sheet 指定 > 名为「采购清单」的表 > 第一张候选
    │    └─ read_workbook → openpyxl，失败则 read_xlsx_builtin（零依赖回退）
    ├─ matching.scan_files(搜索目录)          # 扫 .stp/.step/.pdf
    ├─ matching.build_matches(names, files)  # 纯函数 → MatchResult 列表
@@ -212,7 +212,7 @@ SpeedupError（基类）
 | `models.py` | 领域数据结构（`SupplementEntry`） | 无 |
 | `osutil.py` | 打开文件 / 定位文件夹 / 桌面目录 | 无（Windows 上读一次注册表） |
 | `excel/reader.py` | 读 xlsx、抽「名称」列 | openpyxl（可回退到纯 stdlib） |
-| `excel/writer.py` | 生成补料清单 | openpyxl |
+| `excel/writer.py` | 生成采购清单 | openpyxl |
 | `tools/*.py` | 编排，不含算法 | — |
 
 **依赖方向永远是单向的**：`gui / cli → tools → 领域/IO/基础设施`。
@@ -284,7 +284,7 @@ SpeedupError（基类）
 | 想做的事 | 改哪 |
 | --- | --- |
 | 加一个材料识别规则 | `material.py` 的 `STRONG_PATTERNS` / `WEAK_PATTERN` → 加测试 |
-| 加一个补料清单列 | `config.py` 的 `SUPPLEMENT_HEADERS` / `SUPPLEMENT_WIDTHS` / `COL_*` |
+| 加一个采购清单列 | `config.py` 的 `SUPPLEMENT_HEADERS` / `SUPPLEMENT_WIDTHS` / `COL_*` |
 | 加一个工具 | 见 [`AGENTS.md` §6](../AGENTS.md#6-新增一个工具的标准动作) |
 | 给工具加图形界面表单 | 在 `gui.TOOL_FIELDS` 补一份 `Field`（漏了 `TestFieldContract` 会红） |
 | 改界面配色 / 字号 | `gui.py` 顶部的颜色常量与 `_setup_fonts()` |

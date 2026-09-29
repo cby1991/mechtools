@@ -131,6 +131,13 @@ GBBUILD_FIELDS: tuple[Field, ...] = (
     ),
     Field("out", "输出文件名", "text", flag="--out", hint="留空 = 用文件夹名 + .xlsx"),
     Field(
+        "with_image",
+        "生成轴测图",
+        "bool",
+        flag="--with-image",
+        hint="给每个零件渲染一张等轴测图填进「图片」列（需先装 cadquery，每个零件约 5 秒）",
+    ),
+    Field(
         "no_open",
         "生成后自动打开表格",
         "bool",
@@ -143,7 +150,7 @@ GBBUILD_FIELDS: tuple[Field, ...] = (
 GBCOPY_FIELDS: tuple[Field, ...] = (
     Field(
         "excel",
-        "补料清单",
+        "采购清单",
         "file",
         required=True,
         filetypes=FILTER_EXCEL,
@@ -154,7 +161,7 @@ GBCOPY_FIELDS: tuple[Field, ...] = (
         "指定工作表",
         "text",
         flag="--sheet",
-        hint="留空 = 自动（优先读名为「补料清单」的表）。只在日志提醒「有多张表」时才需要填",
+        hint="留空 = 自动（优先读名为「采购清单」的表；改名前的老文件叫「补料清单」，同样认）",
     ),
     Field(
         "search_dir",
@@ -681,10 +688,11 @@ class ToolPage(BasePage):
 # ------------------------------------------------------------------ 动作页（体检 / 归档）
 
 
-def _doctor_job() -> int:
+def _doctor_job(install: bool = False) -> int:
+    """跑体检。``install=True`` 时补齐缺失的必需依赖（由用户点按钮触发）。"""
     from .cli import run_doctor
 
-    return run_doctor()
+    return run_doctor(install=install)
 
 
 def _archive_job() -> int:
@@ -705,12 +713,16 @@ class ActionPage(BasePage):
         button_text: str,
         job: Callable[[], int],
         intro: str = "",
+        extra: tuple[str, Callable[[], int]] | None = None,
     ):
         self.title = title
         self.summary = summary
         self._button_text = button_text
         self._job = job
         self._intro = intro
+        #: 可选的第二个按钮 ``(文字, 任务)`` —— 比如体检页的「补齐依赖」
+        self._extra = extra
+        self.extra_button: tk.Button | None = None
         super().__init__(master, app)
 
     def build(self, parent: tk.Frame) -> None:
@@ -731,6 +743,12 @@ class ActionPage(BasePage):
             ).pack(fill="x", pady=(0, 10))
         self.run_button = self.app.primary_button(inner, self._button_text, self.on_run)
         self.run_button.pack(side="left")
+        if self._extra is not None:
+            label, job = self._extra
+            self.extra_button = self.app.small_button(
+                inner, label, lambda: self._on_extra(label, job)
+            )
+            self.extra_button.pack(side="left", padx=(6, 0))
 
     def on_run(self) -> None:
         if self.app.busy:
@@ -739,11 +757,22 @@ class ActionPage(BasePage):
         self.app.set_status(f"正在执行「{self.title}」...")
         self.app.run_task(self, self._job)
 
+    def _on_extra(self, label: str, job: Callable[[], int]) -> None:
+        """第二个按钮走和主按钮**同一条路径**（R19：界面只负责拼 argv / 派任务）。"""
+        if self.app.busy:
+            return
+        self.clear_log()
+        self.app.set_status(f"正在执行「{label}」...")
+        self.app.run_task(self, job)
+
     def run_job(self) -> Callable[[], int]:
         return self._job
 
     def set_running(self, running: bool) -> None:
-        self.run_button.configure(state="disabled" if running else "normal")
+        state = "disabled" if running else "normal"
+        self.run_button.configure(state=state)
+        if self.extra_button is not None:
+            self.extra_button.configure(state=state)
 
 
 # ------------------------------------------------------------------ 说明页
@@ -755,18 +784,18 @@ HELP_TEXT = """\
 ────────────────────────────────────────────────────────────
 一、两个工具怎么用
 ────────────────────────────────────────────────────────────
-1. 生成补料清单
+1. 生成采购清单
    选一个装 STP 模型的文件夹 → 点执行。
    程序会扫出所有 .stp/.step，为每个模型找同目录同名的 PDF 图纸，
-   从图纸标题栏里读出材料，最后生成一份 Excel 补料清单。
+   从图纸标题栏里读出材料，最后生成一份 Excel 采购清单。
    图纸没找到、或者图纸里没写材料，会在日志里列出来（材料列留空，需要手填）。
 
-2. 补料文件匹配拷贝
-   选 Excel 补料清单 + 一个搜索文件夹 → 点执行。
+2. 采购文件匹配拷贝
+   选 Excel 采购清单 + 一个搜索文件夹 → 点执行。
    按清单「名称」列去搜索文件夹里把对应的 STP 和 PDF 找出来，拷到清单旁边。
    【重要】建议先勾上「只预演，不真的拷贝」，确认匹配结果对得上，再取消勾选真拷。
    同名文件永远不会被覆盖。
-   清单里有多张工作表时，只会读一张（优先读名为「补料清单」的那张），
+   清单里有多张工作表时，只会读一张（优先读名为「采购清单」的那张），
    日志里会说明读了哪张、忽略了哪张。
 
 ────────────────────────────────────────────────────────────
@@ -978,10 +1007,14 @@ class SpeedupApp:
                 self.container,
                 self,
                 "环境体检",
-                "检查 Python / tkinter / 控制台编码 / 三个依赖库是否就绪",
+                "检查 Python / tkinter / 控制台编码 / 必需依赖是否就绪（含可选出图能力）",
                 "开始体检",
-                _doctor_job,
-                intro="跑不起来任何工具时，先点这里。缺少依赖会明确告诉你是哪一个。",
+                lambda: _doctor_job(),
+                intro=(
+                    "跑不起来任何工具时，先点这里。缺少依赖会明确告诉你是哪一个。\n"
+                    "「补齐依赖」由你点才动手 —— 要联网装包，大包可能要几分钟。"
+                ),
+                extra=("补齐依赖", lambda: _doctor_job(install=True)),
             )
         )
         pages.append(

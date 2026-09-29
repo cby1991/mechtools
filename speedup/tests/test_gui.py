@@ -121,6 +121,32 @@ class TestFieldContract:
                     f"{name} 的位置参数顺序对不上：第 {index + 1} 个应为 {dest}"
                 )
 
+    def test_every_argparse_option_is_exposed_in_gui(self):
+        """**反向**检查：argparse 里的每个可选开关，界面上都得有对应的控件。
+
+        上面几条全是「界面字段 → argparse」的正向检查，查不出
+        「参数加了、界面忘了加」的情况。实测栽过一次：`gbbuild --with-image`
+        只加进了 argparse，忘了加进 ``GBBUILD_FIELDS`` —— 用户在图形界面里
+        永远找不到这个开关，而当时的测试**全绿**。
+        """
+        import argparse
+
+        for name, module in TOOLS.items():
+            parser = argparse.ArgumentParser()
+            subparsers = parser.add_subparsers()
+            module.add_parser(subparsers)  # type: ignore[attr-defined]
+            declared = {
+                option
+                for action in subparsers.choices[name]._actions  # type: ignore[attr-defined]
+                for option in action.option_strings
+                if option not in ("-h", "--help")
+            }
+            exposed = {field.flag for field in gui.TOOL_FIELDS[name] if field.flag}
+            missing = sorted(declared - exposed)
+            assert not missing, (
+                f"{name} 这些命令行开关没做到图形界面上，用户点不到：{missing}"
+            )
+
 
 # ------------------------------------------------------------------ argv 拼装
 
@@ -256,6 +282,30 @@ class TestPages:
         archive = next(page for page in app.pages if page.title == "历史脚本归档")
         assert callable(doctor.run_job())
         assert callable(archive.run_job())
+
+    def test_doctor_page_has_a_standalone_install_button(self, app):
+        """体检页要有「补齐依赖」按钮 —— 但**只能由用户点**，不静默自动装。
+
+        装包会改环境、还可能要几分钟，所以做成显式的第二按钮。
+        这个按钮必须存在且可用（不然用户只能去命令行敲，而他是双击快捷方式用的）。
+        """
+        doctor = next(page for page in app.pages if page.title == "环境体检")
+        assert doctor.extra_button is not None, "体检页少了「补齐依赖」按钮"
+        assert str(doctor.extra_button.cget("state")) == "normal"
+
+    def test_pages_without_extra_have_no_second_button(self, app):
+        """没配第二按钮的页面不能凭空多出一个。"""
+        archive = next(page for page in app.pages if page.title == "历史脚本归档")
+        assert archive.extra_button is None
+
+    def test_extra_button_gets_disabled_while_running(self, app):
+        """跑任务时两个按钮都要禁用，否则能连点两次。"""
+        doctor = next(page for page in app.pages if page.title == "环境体检")
+        doctor.set_running(True)
+        assert str(doctor.run_button.cget("state")) == "disabled"
+        assert str(doctor.extra_button.cget("state")) == "disabled"
+        doctor.set_running(False)
+        assert str(doctor.extra_button.cget("state")) == "normal"
 
 
 # ------------------------------------------------------------------ 输出搬运

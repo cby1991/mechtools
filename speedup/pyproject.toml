@@ -17,6 +17,14 @@ dependencies = [
     "pillow>=10.4.0",
 ]
 
+[project.optional-dependencies]
+#: 轴测图渲染（`gbbuild --with-image`）。
+#:
+#: 刻意**不放进主依赖**：cadquery 会捎带 OCP / vtk / numpy / scipy / numba / trame，
+#: 装一次 4 分多钟、几百 MB。没装的人照样能用其它所有功能 —— `thumb.py` 会优雅降级
+#: （`is_available()` 返回 False，渲染返回带 error 的结果，不抛异常）。
+images = ["cadquery>=2.4"]
+
 [project.scripts]
 speedup = "speedup.cli:main"
 

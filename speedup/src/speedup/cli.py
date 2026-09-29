@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
 from collections.abc import Callable, Sequence
 
@@ -54,7 +55,14 @@ def build_parser() -> argparse.ArgumentParser:
         module.add_parser(subparsers)
     subparsers.add_parser("gui", help="打开图形界面（不带参数运行时的默认行为）")
     subparsers.add_parser("menu", help="进入纯文字交互菜单（不开窗口）")
-    subparsers.add_parser("doctor", help="环境体检：Python / tkinter / 编码 / 依赖 / 工具链")
+    doctor = subparsers.add_parser(
+        "doctor", help="环境体检：Python / tkinter / 编码 / 依赖 / 工具链"
+    )
+    doctor.add_argument(
+        "--install",
+        action="store_true",
+        help="发现必需依赖缺失时，由你主动触发补齐（会联网装包，大包可能要几分钟）",
+    )
     subparsers.add_parser("archive", help="列出 archive/ 里归档的历史脚本")
     shortcut = subparsers.add_parser(
         "shortcut",
@@ -97,17 +105,134 @@ def _probe_tkinter() -> str:
 def _probe_openpyxl() -> str:
     import openpyxl
 
-    return f"{openpyxl.__version__}（写补料清单、读清单都靠它）"
+    return f"{openpyxl.__version__}（写采购清单、读清单都靠它）"
 
 
 def _probe_pdfplumber() -> str:
     import pdfplumber
 
-    return f"{getattr(pdfplumber, '__version__', 'unknown')}（读图纸标题栏识别材料）"
+    return f"{getattr(pdfplumber, '__version__', 'unknown')}（读图纸：识别材料 + 提取表面处理要求）"
 
 
-def run_doctor(_args: argparse.Namespace | None = None) -> int:
-    """打印环境体检结果。任何人反馈「跑不起来」时，先让他跑这个。"""
+def _probe_pillow() -> str:
+    from PIL import __version__ as pillow_version
+
+    return f"{pillow_version}（Excel 嵌轴测图、裁白边靠它）"
+
+
+def _probe_cadquery() -> str:
+    """**可选**依赖：没装只影响「生成轴测图」，其它功能照常。
+
+    所以探测结果里带「可选」两个字，``run_doctor`` 会据此**不把它算作失败**。
+    """
+    from .thumb import is_available
+
+    if not is_available():
+        return "未安装 —— 「生成轴测图」不可用（可选，装法：uv pip install cadquery）"
+    try:
+        import vtk  # noqa: F401  —— cadquery.vis 的渲染后端，缺了照样出不了图
+    except ImportError:
+        return "cadquery 在，但缺 vtk —— 渲染不可用（可选，装法：uv pip install vtk）"
+    try:
+        import cadquery
+
+        return f"{cadquery.__version__}（生成零件轴测图）"
+    except Exception as exc:  # noqa: BLE001 —— 体检本身不能挂
+        return f"不可用（{exc}）"
+
+
+def _has_module(name: str) -> bool:
+    """这个模块能不能 import（用来判断 venv 里有没有 pip）。"""
+    import importlib.util
+
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def _bundled_uv() -> str | None:
+    """本机已知的 uv 绝对路径（uv 常常不在 PATH 上）。
+
+    这是**这台机器**的兜底：本项目用 uv 建的 venv 不带 pip，
+    而 uv 又常不在 PATH —— 所以要记一个已知位置。
+    找不到就返回 None，让调用方去提示手装。
+    """
+    candidates = [
+        os.path.expanduser(
+            "~/.workbuddy/binaries/python/envs/default/Scripts/uv.exe"
+        ),
+        os.path.expanduser("~/.cargo/bin/uv.exe"),
+        os.path.expanduser("~/.local/bin/uv"),
+    ]
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+def pick_installer() -> list[str] | None:
+    """挑一个能装包的入口，返回**命令前缀**；一个都没有时返回 ``None``。
+
+    按可靠性排序：
+
+    1. 当前解释器自带的 ``python -m pip`` —— 最稳，装的必然是当前环境
+    2. PATH 上的 ``uv pip`` —— 本项目用 uv 管理，这是常态
+    3. 已知绝对路径的 ``uv`` —— uv 不在 PATH 时的兜底
+
+    **为什么不能想当然用 ``python -m pip``**：uv 建的 venv 默认**不装 pip**，
+    直接调会报 ``No module named pip``（实测踩过）。
+
+    返回的只是**前缀**，``--python`` 由 :func:`install_command` 补 ——
+    因为 uv 要求它出现在 ``install`` **之后**。
+    """
+    if _has_module("pip"):
+        return [sys.executable, "-m", "pip"]
+
+    found = shutil.which("uv")
+    if found:
+        return [found, "pip"]
+
+    bundled = _bundled_uv()
+    if bundled:
+        return [bundled, "pip"]
+
+    return None
+
+
+def _is_uv(prefix: Sequence[str]) -> bool:
+    """前缀是不是 uv（看可执行文件名）。"""
+    return bool(prefix) and os.path.basename(prefix[0]).lower().startswith("uv")
+
+
+def install_command(prefix: Sequence[str], *packages: str) -> list[str]:
+    """拼出完整的装包命令。
+
+    **uv 要额外钉住解释器，而且 ``--python`` 必须放在 ``install`` 之后**：
+
+    * 对：``uv pip install --python <解释器> pillow``
+    * 错：``uv pip --python <解释器> install pillow`` ← 实测直接报 Usage
+
+    为什么非要钉住解释器：``uv pip install`` 默认装到「激活的那个环境」，
+    而从图形界面或双击快捷方式启动时**根本没激活任何环境** —— 不指定就会
+    装到别处，用户看到的是「明明装成功了却还是不可用」。
+    """
+    command = [*prefix, "install"]
+    if _is_uv(prefix):
+        command += ["--python", sys.executable]
+    return [*command, *packages]
+
+
+def run_doctor(  # noqa: PLR0912 —— 体检本来就分支多，拆开反而难读
+    _args: argparse.Namespace | None = None, *, install: bool = False
+) -> int:
+    """打印环境体检结果。任何人反馈「跑不起来」时，先让他跑这个。
+
+    :param install: ``True`` 时**由用户主动触发**补齐缺失的必需依赖。
+        刻意不做成自动静默安装 —— 装包会改用户的环境，而且 cadquery
+        这类大包要几分钟，静默装会让人以为程序卡死了。所以：**用户按了才装**，
+        而且进度直接透传到终端。
+    """
     console.ensure_safe_output()
     console.heading(f"{PROGRAM} {__version__} 环境体检")
 
@@ -117,8 +242,10 @@ def run_doctor(_args: argparse.Namespace | None = None) -> int:
         _probe("控制台编码", lambda: console.console_encoding()),
         _probe("openpyxl", _probe_openpyxl),
         _probe("pdfplumber", _probe_pdfplumber),
+        _probe("pillow", _probe_pillow),
+        _probe("cadquery（可选）", _probe_cadquery),
     ]
-    console.print_table(("检查项", "结果"), checks, max_widths=(16, 56))
+    console.print_table(("检查项", "结果"), checks, max_widths=(18, 58))
 
     encoding = console.console_encoding().lower()
     if encoding not in {"utf-8", "utf8", "cp936", "gbk", "gb2312"}:
@@ -129,12 +256,74 @@ def run_doctor(_args: argparse.Namespace | None = None) -> int:
     else:
         console.ok(f"控制台编码 {encoding} 可以正常显示中文。")
 
-    missing = [name for name, result in checks if result.startswith("不可用")]
-    if missing:
-        console.warn(f"以下项目不可用：{'、'.join(missing)}。缺少第三方库时执行：uv sync")
+    # 带「可选」标记的缺了不算失败 —— 它只影响某一个功能，不影响主流程（R29）
+    missing = [
+        name
+        for name, result in checks
+        if result.startswith("不可用") and "可选" not in name
+    ]
+    if not missing:
+        console.ok("必需的依赖全部就绪。")
+        return 0
+
+    console.warn(f"以下必需依赖不可用：{'、'.join(missing)}")
+    if install:
+        return _install_missing(missing)
+
+    console.warn("补齐办法（任选其一）：")
+    print(f"        uv pip install {' '.join(_package_of(name) for name in missing)}")
+    print(f"        pip install {' '.join(_package_of(name) for name in missing)}")
+    return 1
+
+
+def _package_of(probe_name: str) -> str:
+    """体检项的名字 → PyPI 包名（两边不总是同名，所以显式映射）。"""
+    return _PACKAGE_OF_PROBE.get(probe_name, probe_name)
+
+
+#: 体检项 → PyPI 包名
+_PACKAGE_OF_PROBE: dict[str, str] = {
+    "openpyxl": "openpyxl",
+    "pdfplumber": "pdfplumber",
+    "pillow": "pillow",
+    "cadquery（可选）": "cadquery",
+}
+
+
+def _install_missing(missing: Sequence[str]) -> int:
+    """用户主动触发时装那些缺的包。进度直接透传到终端，不静默。"""
+    installer = pick_installer()
+    packages = [_package_of(name) for name in missing]
+
+    if installer is None:
+        console.warn("没找到可用的装包工具（venv 里没 pip，PATH 上也没 uv）。")
+        console.warn("请手动执行：")
+        print(f"        uv pip install {' '.join(packages)}")
         return 1
-    console.ok("全部检查通过。")
-    return 0
+
+    import subprocess
+
+    command = install_command(installer, *packages)
+    console.section("开始安装")
+    print(f"命令：{' '.join(command)}")
+    print("（大包可能要几分钟，进度会实时刷出来；中途可以 Ctrl+C 中断）\n")
+
+    try:
+        code = subprocess.run(command, check=False).returncode  # noqa: S603
+    except KeyboardInterrupt:
+        console.warn("安装被中断。")
+        return 1
+    except OSError as exc:
+        console.warn(f"装包命令起不来：{exc}")
+        return 1
+
+    if code != 0:
+        console.warn(f"安装失败（退出码 {code}）。多半是网络问题，可手动重试。")
+        return 1
+
+    console.ok("安装完成 —— 下面重新体检一遍：")
+    print()
+    return run_doctor()
 
 
 # ------------------------------------------------------------------ 归档清单
@@ -374,7 +563,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if command == "menu":
         return run_menu()
     if command == "doctor":
-        return run_doctor(args)
+        return run_doctor(args, install=getattr(args, "install", False))
     if command == "archive":
         return run_archive(args)
     if command == "shortcut":

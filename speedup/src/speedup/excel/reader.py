@@ -11,11 +11,11 @@ xlsx 会直接抛异常（现实里经常遇到别的系统导出的表）。所
 
 一份工作簿只认一张表
 --------------------
-现实的补料清单常常不止一张表带「名称」列 —— 后面还跟着「备料参考」
+现实的采购清单常常不止一张表带「名称」列 —— 后面还跟着「备料参考」
 「备料明细」之类的附页。**只读其中一张**，选法见
-:func:`extract_names_from_sheets`（优先认名为「补料清单」的表）。
+:func:`extract_names_from_sheets`（优先认名为「采购清单」的表）。
 
-早期实现是把所有表的名**合并**，于是参考页的零件也被当成待补料，
+早期实现是把所有表的名**合并**，于是参考页的零件也被当成待采购，
 白拷了一堆文件出去。这个坑记在 ``AGENTS.md`` 的 P12。
 
 分层设计
@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from ..config import (
     HEADER_SEARCH_ROWS,
     NAME_HEADER_KEYWORD,
-    PREFERRED_INPUT_SHEET,
+    PREFERRED_INPUT_SHEETS,
 )
 from ..errors import InputError, UnsupportedFormatError
 
@@ -121,7 +121,7 @@ class NameExtraction:
         return (
             f"这份工作簿里有 {len(self.skipped) + 1} 张表都带「{self.header_keyword}」列，"
             f"本次只用「{self.sheet}」，忽略了{others}。"
-            f"如果那些零件也该一起补料，请用 --sheet 指定要读哪张表。"
+            f"如果那些零件也该一起采购，请用 --sheet 指定要读哪张表。"
         )
 
 
@@ -292,14 +292,15 @@ def extract_names_from_sheets(
     **只认一张表。** 选表的顺序：
 
     1. 调用方用 ``sheet=`` 明确指定 → 就用它（不存在则抛 :class:`InputError`）
-    2. 否则工作簿里有名为 :data:`PREFERRED_INPUT_SHEET`（「补料清单」）的表 → 用它
+    2. 否则工作簿里有名为 :data:`PREFERRED_INPUT_SHEETS`（「采购清单」，兼容旧名
+       「补料清单」）的表 → 用它
     3. 否则用**第一张**带该表头的表
 
     剩下那些同样带表头却没被选中的表记在 :attr:`NameExtraction.skipped` 里，
     由调用方决定要不要提醒用户 —— 它们常常是「参考」「备料」之类的附页。
 
-    > 早期实现是把**所有**表的名**合并**。遇到「补料清单 + 备料参考」
-    > 这种工作簿，参考页的零件也会被当成待补料，白拷一堆文件出去。
+    > 早期实现是把**所有**表的名**合并**。遇到「采购清单 + 备料参考」
+    > 这种工作簿，参考页的零件也会被当成待采购，白拷一堆文件出去。
     > 见 `AGENTS.md` 的 P12。
 
     :returns: :class:`NameExtraction`；一张候选表都没有时其 ``sheet`` 为 ``None``
@@ -334,7 +335,12 @@ def extract_names_from_sheets(
             header_keyword=header_keyword,
         )
     else:
-        chosen = next((c for c in candidates if c.name == PREFERRED_INPUT_SHEET), candidates[0])
+        chosen = candidates[0]
+        for wanted in PREFERRED_INPUT_SHEETS:
+            match = next((c for c in candidates if c.name == wanted), None)
+            if match is not None:
+                chosen = match
+                break
 
     names, count = _read_column(sheets[chosen.name], chosen.column, chosen.header_row)
     return NameExtraction(
