@@ -339,6 +339,12 @@ scan_files / execute_copies                   ← 只有这两层真的读写磁
 推送走 `sync-to-github.py`：临时目录建外壳仓库 → 拉远端 → `git bundle` 搬对象 →
 `git read-tree --prefix=speedup/` → 提交推送。**临时目录用完即删。**
 
+> **脚本位置已迁出本仓库**（2026-09-29）。原来 `speedup/sync-to-github.py` 只懂
+> speedup 一个仓库；mechtools 组织下多了 `swauto` 之后，它升级成了**多项目同步器**，
+> 搬迁到组织层：`D:\WorkSpace\projectmanage\mechtools\sync-to-github.py`。
+> 用法 `python sync-to-github.py all`（或 `speedup` / `swauto` / `--list`）。
+> **本仓库里不再放同步脚本** —— 它是跨项目的运维工具，不属于任何单个工具。
+
 - **一律改本地文件，不要改外壳仓库里的副本。** 外壳仓库每次重建，改动必然丢失
   （踩过：改了远端 README 的 clone 占位，推完发现远端还是旧的，见 [P13](#p13--改在临时副本上的东西，一同步就被本地覆盖回去)）
 - **同步前本地工作区必须干净。** 脚本会拦，不要绕过 —— 脏工作区推上去的东西
@@ -346,8 +352,11 @@ scan_files / execute_copies                   ← 只有这两层真的读写磁
 - **本地是唯一真相源。** 远端任何手工改动，下次同步都会被覆盖。要改就改本地
 - **每次同步后必须回读远端确认**（`gh api .../contents/<path>`），
   不能只看 `push` 的返回码
+- **多项目必须共用同一个外壳仓库。** 每个项目各建一个外壳、各自 push，
+  第二次会被拒（远端已前进）。脚本已按「一个外壳、依次 read-tree、一次 push」
+  实现，别改成循环里各自 push
 
-**验收**：`sync-to-github.py --dry-run` 能在脏工作区时拒绝执行；
+**验收**：`sync-to-github.py speedup --dry-run` 能在脏工作区时拒绝执行；
 同步后远端 `speedup/README.md` 的内容与本地 `git show HEAD:README.md` 一致。
 
 ---
