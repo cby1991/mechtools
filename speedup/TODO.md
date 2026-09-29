@@ -32,8 +32,9 @@
 > ⚠️ **写数字要小心**：用例总数、最大编号这类汇总数字最容易腐烂。
 > 能不写就不写，能写「见 README」就别抄一份（教训见 `AGENTS.md` P11）。
 
-**最后更新**：2026-09-28
-**当前状态**：拿掉方案出图、完成脱敏、README 改中英双语；准备推 GitHub 公开仓库
+**最后更新**：2026-09-29
+**当前状态**：已推送到 GitHub 公开仓库 `cby1991/mechtools`（子目录 `speedup/`）；
+剩下的是真机实测和界面观感，都得人工。
 
 ---
 
@@ -52,15 +53,15 @@
 | M9 拿掉「方案出图」工具 | ✅ 完成（备份在 `_backup/poster-2026-09-28/`） |
 | M10 公开仓库脱敏 | ✅ 完成（替换 300+ 处，`archive/` 移出仓库） |
 | M11 README 改中英双语 | ✅ 完成 |
-| M12 推到 GitHub | ⬜ **待办，需要主人给仓库地址 + 认证** |
+| M12 推到 GitHub | ✅ 完成（`cby1991/mechtools` 的 `speedup/` 子目录；本地挂了 origin） |
 | M13 真机实测 + 界面观感 | ⬜ **待办，需要人工** |
+| M14 封装同步脚本 | ✅ 完成（`sync-to-github.py`，支持更新已有子目录） |
 
 ---
 
 ## 2. 进行中
 
-> 卡在 **[M12 推 GitHub](#3-待办)**：需要仓库地址和推送凭据。
-> 其余开发任务均无进行中项。
+> 无。开发侧全部完成，剩下 [M13 真机实测](#3-待办) 需要主人上手。
 
 ---
 
@@ -68,22 +69,6 @@
 
 ### P0 —— 必须做
 
-- **推 GitHub（卡在小埃这边，需要主人给两样东西）**
-  1. **仓库地址**：已经建好了？给我 URL；或者你先去 GitHub 建一个空仓库
-     （**注意选 Private 还是 Public —— 我们按公开做的脱敏，选 Public 没问题**）
-  2. **推送凭据**：这台机器上 `gh` 没装、也没有 GitHub 的 SSH key，
-     所以要么你直接跑下面两条命令，要么给我一个 Personal Access Token
-  - 命令（仓库建好后在项目目录执行）：
-    ```bash
-    git remote add origin <你的仓库地址>
-    git push -u origin main
-    ```
-  - ⚠️ 推送前还要决定一件事：**提交者邮箱现在是 `cby19@local`**
-    （仓库级配置），这不是有效邮箱，推上去提交不会算在你 GitHub 账号名下。
-    想让它算你的，先改：
-    ```bash
-    git config user.email "你的GitHub邮箱或 <id>+用户名@users.noreply.github.com"
-    ```
 - **清理 0928 里那 26 个多拷的文件**
   - 清单在 `%TEMP%\0928_多余文件清单.txt`（小埃生成的，已核对）
   - ⚠️ 动手前先看一眼：里面有些**可能原本就在那个文件夹**（那样工具是「跳过同名」
@@ -136,6 +121,45 @@
 ---
 
 ## 4. 已完成
+
+### 2026-09-29（第六轮）—— 发布到 GitHub
+
+起因：主人装好了 GitHub 环境（`gh` CLI 2.101.0，装在 `C:\Program Files\GitHub CLI\`），
+要求推到他的仓库。策略是「先找到、再问推哪里」。
+
+**1. 找到仓库**
+- 账号 `cby1991` 名下只有 `cby1991/mechtools`（公开，Apache-2.0，一个 `Initial commit`）
+- 主人选定：推到 **`mechtools/speedup/` 子目录**（mechtools 当「工具集合」仓库）
+
+**2. 发布前修的东西**
+- `pyproject.toml`：`authors` 从 `小埃` 换成 `cby`；删掉 `Private :: Do Not Upload`
+  （跟「要推公开仓库」直接矛盾）；`Documentation` 的 `example.invalid` 换真地址；
+  `description` 改成面向公开读者的中性英文
+- 新增 `LICENSE`（Apache-2.0，跟 mechtools 根那份一致，版权行填 `2026 cby`）
+- 两份 README 的 `git clone <占位>` 换成真实地址 + `cd mechtools/speedup`
+
+**3. 有个技术问题绕了一下**
+- git **不支持**「A 仓库的根 → B 仓库的子目录」。`git subtree push --prefix` 也**用不了**，
+  因为它要求 `--prefix` 在**当前仓库里真实存在**，而本地仓库根本身就是 speedup
+- 改用「外壳仓库」：临时目录建仓库 → 拉远端 → `git bundle` 搬本地对象 →
+  `git read-tree --prefix=speedup/` 挂载 → 提交推送。**本地仓库零改动，日常开发不受影响**
+- 封装成 `sync-to-github.py`，以后同步一条命令
+
+**4. 踩到两个坑（都记进 AGENTS.md 了）**
+- **P13-1**：`read-tree --prefix` 在**远端已有该子目录**时报 `overlaps ... Cannot bind.`
+  —— 首次添加能用、后续更新就炸。得多一步 `git rm -r --cached` 清索引
+- **P13-2**：我先在**外壳仓库的副本**里改了 README，推完回读发现还是旧内容 ——
+  因为同步的语义是「用本地覆盖远端」，副本里的改动必然被盖掉。
+  **本地才是真相源**（→ [R25](AGENTS.md)）
+
+**5. 结果**
+- 远端 3 条提交，最终 `fd5a243`；根目录 `LICENSE` + `README.md`（索引页）+ `speedup/`
+- 提交者 `cby <boyang_chen@163.com>`，已验证归属到 `cby1991` 账号（`gh_user: cby1991`）
+- 本地仓库也挂了 `origin`，以后 `git fetch/push` 直接可用
+- 测试 343 passed / 1 skipped，未被破坏
+- 回读远端三个 README 内容，逐字确认
+
+---
 
 ### 2026-09-28（第五轮）—— 拿掉方案出图 + 脱敏 + README 中英双语
 

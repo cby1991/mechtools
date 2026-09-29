@@ -112,7 +112,7 @@ speedup/
 │   ├── matching.py      # match scoring + copy planning (pure functions)
 │   ├── excel/           # xlsx reader & writer
 │   └── tools/           # one module per tool
-├── tests/               # 12 files, 344 cases
+├── tests/               # 11 files, 344 cases
 └── docs/ARCHITECTURE.md # layering and the trade-offs behind it
 ```
 

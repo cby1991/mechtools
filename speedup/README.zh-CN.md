@@ -108,7 +108,7 @@ speedup/
 │   ├── matching.py      # 匹配打分 + 拷贝规划（纯函数）
 │   ├── excel/           # xlsx 读 / 写
 │   └── tools/           # 一个工具一个模块
-├── tests/               # 12 个文件，344 个用例
+├── tests/               # 11 个文件，344 个用例
 └── docs/ARCHITECTURE.md # 分层设计与取舍记录
 ```
 
