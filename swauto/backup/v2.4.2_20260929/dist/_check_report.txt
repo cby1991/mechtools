@@ -1,0 +1,72 @@
+=== 读取编码: GBK ===
+
+=== 过程块配平 ===
+OK   Sub             28  /  End Sub         28
+OK   Function        74  /  End Function    74
+OK   If_Then_block  154  /  End If         154
+OK   For             40  /  Next            40
+OK   Do               7  /  Loop             7
+OK   Select Case      6  /  End Select       6
+
+=== 引号成对性（吞引号会直接导致语法错误）===
+  全部行引号成对 OK
+
+=== 类型库依赖 ===
+  swDocumentTypes_e
+  swExportDataFileType_e
+  swOpenDocOptions_e
+  swSaveAsOptions_e
+  swSaveAsVersion_e
+  swUserPreferenceIntegerValue_e
+--- 枚举成员 ---
+  swDocASSEMBLY
+  swDocDRAWING
+  swDocPART
+  swExportPDFData
+  swOpenDocOptions_Silent
+  swSaveAsCurrentVersion
+  swSaveAsOptions_Silent
+  swStepAP
+
+=== 配置常量一致性（用了但没定义 = VBE 报「变量未定义」）===
+  全部 36 个 CFG_* 均已定义 OK
+
+=== 标准件关键字规则抽检（读上方配置区的实际值）===
+  文件名关键字(26): 螺钉,螺母,螺栓,螺柱,垫圈,垫片,挡圈,卡簧,弹性挡圈,开口销,销钉,圆柱销,圆锥销,铆钉,自攻,Bolt,Nut,Washer,Screw,Stud,Rivet,Circlip,Snap Ring,Retaining Ring,O-Ring,Spring Pin
+  标准号(8)     : GB/T,GB-T,GBT,ISO,DIN,JIS,ANSI,BS-
+  路径关键字(4) : SOLIDWORKS Data,Toolbox,标准件,紧固件
+
+  应该命中 16/16 OK   不该命中 14/14 OK
+  规则：中文/带分隔符的关键字走子串匹配（螺钉M8 能认出）；
+        纯字母数字的走词边界（Spindle 不中 Pin、Walnut 不中 Nut、
+        ISOLATION 不中 ISO、Screwdriver 不中 Screw；但 GBT5782 能中 GBT）
+
+=== 自定义过程调用一致性（本项目前缀 U_/F_/X_/M_/G_/Cfg_，故无内置函数误报）===
+  所有自定义过程调用都能找到定义 OK
+
+=== 危险 API 用法（这两个坑都实际踩过，写错会静默出错）===
+  IsHidden 一律传 False（轻化零件不会被误杀）OK
+  没有使用不存在的 IsToolboxComponent OK
+  隐藏/压缩/封套 三个开关都接进了 G_KindSkipped OK
+  勾选框的取消判断排在长度校验之前（C 不会被误判）OK
+  掩码权重 隐藏=1 / 压缩=2 / 封套=4 齐全 OK
+  跳过标记的开关与属性名都接进了判定 OK
+
+=== PowerShell 脚本（在 VB 里是拼字符串写的，只能还原出来验）===
+  文件夹选择器：here-string 与括号配平 OK；PowerShell 解析通过 OK（4320 字符）
+  展开选项勾选框：here-string 与括号配平 OK；PowerShell 解析通过 OK（2247 字符）
+
+=== 入口宏（必须 Public Sub 且无参数）===
+  行 2175: Public Sub SwAuto_ExportActiveDoc()
+  行 2194: Public Sub SwAuto_PickFiles()
+  行 2221: Public Sub SwAuto_PickFolder()
+  行 2266: Public Sub SwAuto_Help()
+  行 2312: Public Sub SwAuto_CheckTag()
+
+=== 入口宏的模式标识（漏了 = 弹窗标题分不清是哪个模式）===
+  OK SwAuto_ExportActiveDoc     -> 1/3 · 当前文档
+  OK SwAuto_PickFiles           -> 2/3 · 自选文件
+  OK SwAuto_PickFolder          -> 3/3 · 文件夹批量
+  -- SwAuto_Help                （说明宏，无需模式标识）
+  -- SwAuto_CheckTag            （说明宏，无需模式标识）
+  弹窗标题都能标明模式 OK

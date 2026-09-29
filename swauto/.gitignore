@@ -1,0 +1,15 @@
+# Python 虚拟环境与缓存
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 测试临时产物
+tests/_tmp/
+
+# 备份的 zip 包 —— 是 backup/v*/ 快照目录的压缩副本，纯冗余。
+# git 里保留快照目录本身（能看清每次改了什么），zip 只留在本地。
+backup/*.zip
+
+# 工具自己的工作区记忆（含本机路径、调试记录），不适合公开
+.workbuddy/

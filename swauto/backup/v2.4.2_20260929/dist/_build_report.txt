@@ -1,0 +1,7 @@
+output : dist/SWautoExport.bas  (GBK, CRLF)
+files  : src\00_header.bas, src\10_config.bas, src\20_util.bas, src\25_dialog.bas, src\30_finder.bas, src\35_gather.bas, src\40_exporter.bas, src\50_main.bas
+lines  : 2799
+bytes  : 119816
+round-trip decode OK: YES
+Option Explicit 次数: 1
+过程数: 102   重名: 无

@@ -1,0 +1,56 @@
+# ============================================================================
+#  换行符策略 —— 这不是风格问题，是「能不能用」的问题
+# ============================================================================
+#
+#  SWauto 对换行符有硬要求，仓库里必须逐字节保住：
+#
+#    src/*.bas                UTF-8 + LF          （源码，给 build.py 拼）
+#    dist/SWautoExport.bas    GBK   + CRLF        （给 VBE「文件 > 导入文件」）
+#    dist/*_粘贴用.txt        UTF-8 + BOM + LF    （给剪贴板粘贴）
+#
+#  ⚠️ dist/SWautoExport.bas 必须保持 CRLF：它是 GBK 编码的单文件宏。
+#     一旦 git 把 CRLF 归一成 LF，别人 clone 下来导入 VBE 就可能编译不过
+#     （行尾异常，甚至吞掉续行符 `_`）。
+#
+#  ★ 这里踩过一个坑，记下来别再犯 ★
+#     最初写的是 `**/dist/SWautoExport.bas  text eol=crlf` + `**/dist/*  text eol=lf`。
+#     结果 `git check-attr` 报 `eol: lf` —— 因为 **gitattributes 是「最后匹配的规则赢」**，
+#     而 `**/dist/*` 排在后面且同样匹配 SWautoExport.bas，把 crlf 那条盖掉了。
+#     教训：这类文件要么排除掉，要么把特定规则放最后。
+#
+#  为什么最后用 `-text`（二进制）而不是 `eol=crlf`：
+#     · `-text` 表示 git 完全不做换行转换 —— 进出都是原字节，最保险；
+#     · SWautoExport.bas 本来就是 **GBK** 编码，交给 git 当文本处理并不合适；
+#     · 代价：diff 会显示「二进制文件已更改」看不到内容。但对交付件来说，
+#       「字节绝对不变」比「diff 好看」重要得多 —— 源码在 src/ 里，那边 diff 正常。
+# ============================================================================
+
+# 交付件：**原字节不许动**（GBK + CRLF，VBE 导入用）
+# 用 * 而不是 **/... 的写法，是因为 backup/vX.Y.Z_日期/dist/ 里也各有一份快照
+dist/SWautoExport.bas       -text
+backup/*/dist/SWautoExport.bas -text
+**/dist/SWautoExport.bas    -text
+
+# 交付件的其它文件：LF（含 backup 里的历史快照）
+**/dist/*_粘贴用.txt         text eol=lf
+**/dist/_build_report.txt     text eol=lf
+**/dist/_check_report.txt     text eol=lf
+**/dist/*.csv                text eol=lf
+
+# 源码与脚本：LF
+**/src/*.bas                 text eol=lf
+tests/*.py                   text eol=lf
+*.py                         text eol=lf
+*.md                         text eol=lf
+*.ini                        text eol=lf
+.gitignore                   text eol=lf
+.gitattributes               text eol=lf
+
+# 二进制：完全不碰
+*.zip                        binary
+*.swp                        binary
+*.sldprt                     binary
+*.sldasm                     binary
+*.slddrw                     binary
+*.png                        binary
+*.jpg                        binary
