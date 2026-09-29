@@ -31,8 +31,8 @@ subcommands, and a test suite.
 ## Install
 
 ```bash
-git clone https://github.com/cby1991/mechtools.git
-cd mechtools/speedup
+git clone <your-repo-url> speedup
+cd speedup
 uv sync
 uv run speedup doctor      # sanity check
 uv run speedup shortcut    # create the double-click entry point

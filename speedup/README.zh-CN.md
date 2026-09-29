@@ -29,8 +29,8 @@
 ## 安装
 
 ```bash
-git clone https://github.com/cby1991/mechtools.git
-cd mechtools/speedup
+git clone <你的仓库地址> speedup
+cd speedup
 uv sync
 uv run speedup doctor      # 环境体检
 uv run speedup shortcut    # 生成双击启动的图标
